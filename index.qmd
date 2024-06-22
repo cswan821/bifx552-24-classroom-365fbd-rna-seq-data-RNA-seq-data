@@ -1,0 +1,209 @@
+---
+title: "RNA-seq Data"
+format: 
+  html:
+    theme: 
+      light: flatly
+      dark: darkly
+execute:
+  echo: false
+editor: visual
+---
+
+```{r}
+#| inclue: false
+#| message: false
+library(readr)
+library(dplyr)
+library(tidyr)
+
+library(ggplot2)
+library(cowplot)
+library(hexbin)
+theme_set(theme_cowplot())
+
+source('https://tinyurl.com/wjm6ryj')
+
+if(FALSE)
+{
+    download.file(url = "https://github.com/Bioconductor/bioconductor-teaching/raw/master/data/GSE96870/rnaseq.csv",
+              destfile = "data/rnaseq.csv")
+}
+
+### Read in data here ###
+dat <- read_csv('data/rnaseq.csv') %>%
+    mutate(l2exp = log2(expression + 1))
+```
+
+## Agenda
+
+-   Today's lab
+    -   RNA-Seq data visualization - this lab borrows heavily from a [Carpentries incubator module on visualization](https://carpentries-incubator.github.io/bioc-intro/40-visualization.html).
+
+## RNA-Seq data
+
+To start out with, fork the [starter code](https://classroom.github.com/a/Yz2GMIqU) and clone the repository to your local machine. Once we have done that, let's explore the data provided:
+
+```{r}
+dat
+```
+
+Take a look at the distribution of the expression levels:
+
+```{r}
+#| message: false
+(g1 <- )
+## You'll probably notice an automatic message that appears when drawing the histogram: `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+## Change the arguments bins or binwidth of geom_histogram() to change the number or width of the bins.
+```
+
+The data should be transformed. Transforming on the $\log_{10}$ scale is easy in `ggplot2`,
+
+```{r}
+#| warning: false
+g1 + 
+```
+
+but we often use a $log_2$ scale when looking at expression data:
+
+```{r}
+#| warning: false
+ticks_at <- c(0,5,10,15)
+ggplot(dat, aes(l2exp)) +
+
+```
+
+### Building plots iteratively
+
+We will now draw a scatter plot with two continuous variables and the `geom_point()` function. This graph will represent the $\log_2$ fold changes of expression comparing time 8 versus time 0, and time 4 versus time 0. To this end, we first need to compute the means of the log-transformed expression values by gene and time, then the log fold changes by subtracting the mean log expressions between time 8 and time 0 and between time 4 and time 0.
+
+```{r}
+#| message: false
+# fold change data
+dat_fc <- dat %>% 
+    select(gene, 
+           time,
+           gene_biotype,
+           expression) %>%
+    
+     # calculate summaries of log2 expression grouped by gene, time, gene_biotype
+    group_by(gene, time, gene_biotype) %>%
+    summarize(mean_exp = mean(log2(expression + 1))) %>%
+    ungroup() %>%
+    
+    # pivot wider so that there is a separate column for each value in time
+    pivot_wider(names_from = time,
+                values_from = mean_exp) %>%
+    
+    mutate(time_8_vs_0 = `8` - `0`, # compare time 8 vs 0
+           time_4_vs_0 = `4` - `0`) # compare time 4 vs 0
+
+# visualize time_4_vs_0 by time_8_vs_0 
+ggplot(dat_fc, ...) +
+
+```
+
+We could also add color, but it begins to get a little messy with the large number of categories we have.
+
+```{r}
+ggplot(dat_fc, aes(time_4_vs_0, time_8_vs_0)) +
+
+```
+
+Over-plotting can be an issue with large datasets like this. One solution is using `hexbin:geom_hex()`.
+
+```{r}
+ggplot(dat_fc, aes(time_4_vs_0, time_8_vs_0)) +
+
+```
+
+### Box plots
+
+We can use boxplots to visualize the distribution of gene expressions within each sample:
+
+```{r}
+ggplot(dat, ) +
+
+```
+
+Adding points to box plots can give us a better understanding of the underlying distributions.
+
+```{r}
+ggplot(dat, aes(sample, l2exp)) +
+    geom_jitter(alpha = 0.02, width = .15, color = cbbPalette[2]) +
+
+```
+
+We could also use `geom_violin` to better see the distribution of points. Try coloring the points by `time` as well.
+
+```{r}
+ggplot(dat, aes(sample, l2exp)) +
+    geom_jitter(alpha = 0.02, width = .15, aes(color = as.factor(time))) +
+
+```
+
+### Line plots
+
+Let's calculate the mean expression per duration of the infection for the 10 genes having the highest log fold changes comparing time 8 versus time 0. We can do this either by coloring each gene or using `facet_wrap`.
+
+```{r}
+#| message: false
+
+# First, we need to select the genes
+genes_selected <- arrange(dat_fc, desc(time_8_vs_0))$gene[1:10]
+
+# Then create a subset of dat containing the 10 selected genes
+mean_exp_by_time <- dat %>%
+    filter(gene %in% genes_selected) %>%
+    
+    # Then group the data by gene and time
+    group_by(gene, time) %>%
+    # calculate the mean gene expression within each group
+    summarize(mean_exp = mean(l2exp)) %>%
+    ungroup()
+
+ggplot(mean_exp_by_time, ) +
+
+ggplot(mean_exp_by_time, ) +
+
+```
+
+Now we would like to split the line in each plot by the sex of the mice.
+
+```{r}
+#| message: false
+# Then create a subset of dat containing the 10 selected genes
+mean_exp_by_time_sex <- dat %>%
+    filter(gene %in% genes_selected) %>%
+    
+    # Then group the data by gene, time, and sex
+    group_by(gene, time, sex) %>%
+    # calculate the mean gene expression within each group
+    summarize(mean_exp = mean(l2exp)) %>%
+    ungroup()
+
+ggplot(mean_exp_by_time_sex, ) +
+
+```
+
+Let's do something similar and create a plot that depicts how the average expression of each chromosome changes through the duration of infection.
+
+```{r}
+#| message: false
+mean_exp_by_chromosome <- dat %>%
+    group_by(chromosome_name, time) %>%
+    summarize(mean_exp = mean(l2exp))
+
+ggplot(mean_exp_by_chromosome, ) +
+
+```
+
+The `facet_wrap` geometry extracts plots into an arbitrary number of dimensions to allow them to cleanly fit on one page. On the other hand, the `facet_grid` geometry allows you to explicitly specify how you want your plots to be arranged via formula notation (`rows ~ columns`; a `.` can be used as a placeholder that indicates only one row or column).
+
+Let's modify the previous plot to compare how the mean gene expression of males and females has changed through time:
+
+```{r}
+# One column, facet by rows
+ggplot(mean_exp_by_time_sex, ) +
+
+```
